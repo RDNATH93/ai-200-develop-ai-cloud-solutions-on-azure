@@ -2,8 +2,8 @@
 
 # Change the values of these variables as needed
 
-rg="my-resource-group"  # Resource Group name
-location="centralus"   # Azure region for the resources
+rg="resource-group"  # Resource Group name
+location="location"   # Azure region for the resources
 
 # ============================================================================
 # DON'T CHANGE ANYTHING BELOW THIS LINE.
