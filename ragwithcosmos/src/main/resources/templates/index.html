@@ -1,0 +1,297 @@
+<!DOCTYPE html>
+<html lang="en" xmlns:th="https://www.thymeleaf.org/">
+
+<head>
+    <title>RAG Document Store - Cosmos DB</title>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" href="css/style.css">
+</head>
+
+<body>
+    <a href="#main-content" class="skip-link">Skip to main content</a>
+
+    <main id="main-content" class="container">
+        <h1>RAG Document Store - Cosmos DB for NoSQL</h1>
+        <div class="left-panel">
+            <!-- Load Sample Data -->
+            <section class="section section-load">
+                <h2>Load Sample Data</h2>
+                <p>Upload sample document chunks to the Cosmos DB container to populate the database.</p>
+                <form action="/load-data" method="post">
+                    <button type="submit" class="btn-success">Load Sample Chunks</button>
+                </form>
+            </section>
+
+            <!-- Run Tests -->
+            <section class="section section-test">
+                <h2>Run Test Workflow</h2>
+                <p>Execute automated tests to verify RAG functions.</p>
+                <form action="/run-tests" method="post">
+                    <button type="submit" class="btn-primary">Run Tests</button>
+                </form>
+            </section>
+
+            <!-- Get Chunks by Document -->
+            <section class="section section-get">
+                <h2>Get Chunks by Document</h2>
+                <form action="#" th:action="@{/get-chunks}" method="post">
+                    <label for="get_document_id">Select Document ID</label>
+                    <select id="get_document_id" name="document_id" required>
+                        <option value="">-- Select a document --</option>
+                        <!-- Loop through the collection and generate options dynamically -->
+                        <option th:each="doc_id : ${document_ids}" th:value="${doc_id}" th:text="${doc_id}"></option>
+                    </select>
+                    <button type="submit" class="btn-primary">Get Chunks</button>
+                </form>
+            </section>
+
+            <!-- Search by Metadata -->
+            <section class="section section-search">
+                <h2>Search by Metadata</h2>
+                <form action="#" th:action="@{/search-metadata}" method="post">
+                    <label for="search_category">Category</label>
+                    <select id="search_category" name="category">
+                        <option value="">-- Any category --</option>
+                        <option th:each="cat : ${categories}" th:value="${cat}" th:text="${cat}"></option>
+                    </select>
+                    <label for="search_tag">Tag</label>
+                    <input type="text" id="search_tag" name="tag" placeholder="e.g., nosql"
+                        th:value="${param.tag != null ? param.tag : ''}">
+                    <button type="submit" class="btn-primary">Search</button>
+                </form>
+            </section>
+        </div>
+
+        <div class="right-panel">
+            <!-- Query Explorer -->
+            <section class="section section-query">
+                <h2>Query Explorer</h2>
+                <p>Execute custom SQL queries against the Cosmos DB container.</p>
+                <form th:action="@{/execute-query}" method="post">
+                    <label for="sql_query">SQL Query</label>
+                    <textarea id="sql_query" name="sql_query"
+                        placeholder="SELECT c.id, c.documentId, c.content FROM c OFFSET 0 LIMIT 10"
+                        th:text="${executed_query != null ? executed_query : ''}"></textarea>
+
+                    <button type="submit" class="btn-primary">Execute Query</button>
+                </form>
+            </section>
+
+            <!-- Results Section -->
+            <section class="section section-results" aria-live="polite" aria-atomic="true">
+                <h2>Results</h2>
+
+                <!-- Flash Messages -->
+                {% with messages = get_flashed_messages(with_categories=true) %}
+                {% for category, message in messages %}
+                <div class="flash {{ category }}" role="alert">{{ message }}</div>
+                {% endfor %}
+                {% endwith %}
+
+                <!-- Test Results -->
+                <th:block th:if="${test_results != null && !#lists.isEmpty(test_results)}">
+
+                    <h3>Test Results</h3>
+
+                    <!-- Loop through each test result object -->
+                    <div class="test-result" th:each="result : ${test_results}"
+                        th:classappend="${result.status == 'passed' ? 'test-passed' : 'test-failed'}">
+
+                        <div>
+                            <div class="test-name" th:text="${result.name}">Test Name</div>
+                            <div class="test-details" th:text="${result.details}">Test Details</div>
+                        </div>
+
+                        <div class="test-status" th:text="${result.status}">status</div>
+
+                    </div>
+
+                </th:block>
+
+
+                <!-- Get Chunks Results Container -->
+                <th:block th:if="${chunks_result != null}">
+
+                    <h3>Chunks for: <span th:text="${chunks_document_id}">Document ID</span></h3>
+
+                    <!-- Evaluates the size of the chunks collection -->
+                    <div class="query-info">
+                        Found <span th:text="${#lists.size(chunks_result)}">0</span> chunk(s)
+                    </div>
+
+                    <!-- Render if the collection has items -->
+                    <div class="results-container" th:if="${!#lists.isEmpty(chunks_result)}">
+
+                        <!-- Loop over each chunk object -->
+                        <div class="chunk-card" th:each="chunk : ${chunks_result}">
+
+                            <div class="chunk-id">
+                                <span th:text="${chunk.id}">ID</span>
+                                (index: <span th:text="${chunk.chunkIndex}">0</span>)
+                            </div>
+
+                            <div class="chunk-content" th:text="${chunk.content}">
+                                Chunk content goes here...
+                            </div>
+
+                            <div class="chunk-meta">
+                                <!-- Check if metadata.category exists and is not null/empty -->
+                                <span class="tag tag-category"
+                                    th:if="${chunk.metadata != null && chunk.metadata.category != null}"
+                                    th:text="${chunk.metadata.category}">
+                                    Category
+                                </span>
+
+                                <!-- Safely loop over tags list if it exists, otherwise skipped -->
+                                <span class="tag" th:if="${chunk.metadata != null && chunk.metadata.tags != null}"
+                                    th:each="tag : ${chunk.metadata.tags}" th:text="${tag}">
+                                    Tag
+                                </span>
+                            </div>
+
+                        </div>
+                    </div>
+
+                    <!-- Fallback if chunks_result collection exists but is completely empty -->
+                    <div class="empty-state" th:if="${#lists.isEmpty(chunks_result)}">
+                        No chunks found for this document.
+                    </div>
+
+                </th:block>
+
+
+                <!-- Search Results -->
+                <th:block th:if="${search_result != null}">
+
+                    <h3>Search Results</h3>
+
+                    <div class="query-info">
+                        Filters:
+                        <!-- Conditionally display category if it exists and is not blank -->
+                        <!-- 1. Map Check: Access 'category' key from the Map safely -->
+                        <span
+                            th:if="${search_filters != null && search_filters['category'] != null && !#strings.isEmpty(search_filters['category'])}"
+                            th:text="'category=&quot;' + ${search_filters['category']} + '&quot; '">
+                            category="example"
+                        </span>
+
+                        <!-- 2. Map + List Check: Verify 'tags' key exists, is a collection, and isn't empty -->
+                        <span
+                            th:if="${search_filters != null && search_filters['tag'] != null && !#lists.isEmpty(search_filters['tag'])}"
+                            th:text="'tag=&quot;' + ${search_filters['tag']} + '&quot; '">
+                            tag="example"
+                        </span>
+
+                        | Found <span th:text="${#lists.size(search_result)}">0</span> chunk(s)
+                    </div>
+
+                    <!-- Render container if the search results list is not empty -->
+                    <div class="results-container" th:if="${!#lists.isEmpty(search_result)}">
+
+                        <!-- Loop over each chunk inside search_result -->
+                        <div class="chunk-card" th:each="chunk : ${search_result}">
+
+                            <div class="chunk-id">
+                                <span th:text="${chunk.documentId}">Doc ID</span> /
+                                <span th:text="${chunk.id}">Chunk ID</span>
+                            </div>
+
+                            <div class="chunk-content" th:text="${chunk.content}">
+                                Chunk text content goes here...
+                            </div>
+
+                            <div class="chunk-meta">
+                                <!-- Category badge -->
+                                <span class="tag tag-category"
+                                    th:if="${chunk.metadata != null && chunk.metadata.category != null}"
+                                    th:text="${chunk.metadata.category}">
+                                    Category
+                                </span>
+
+                                <!-- Tag listing loop -->
+                                <span class="tag" th:if="${chunk.metadata != null && chunk.metadata.tags != null}"
+                                    th:each="tag : ${chunk.metadata.tags}" th:text="${tag}">
+                                    Tag
+                                </span>
+                            </div>
+
+                        </div>
+                    </div>
+
+                    <!-- Fallback message if search_result is empty -->
+                    <div class="empty-state" th:if="${#lists.isEmpty(search_result)}">
+                        No chunks found matching the filters.
+                    </div>
+
+                </th:block>
+
+
+                <!-- Query Results -->
+                <th:block th:if="${query_result != null}">
+
+                    <h3>Query Results</h3>
+                    <div class="query-text" th:text="${executed_query}">SELECT * FROM c</div>
+
+                    <!-- Check if success field is true -->
+                    <th:block th:if="${query_result.success == 'True'}">
+
+                        <div class="query-info">
+                            Returned <span th:text="${query_result.count}">0</span> row(s)
+                        </div>
+
+                        <!-- Render table if the results list exists and has elements -->
+                        <div class="results-container"
+                            th:if="${query_result.results() != null && !#lists.isEmpty(query_result.results())}">
+                            <table class="query-results-table">
+                                <thead>
+                                    <tr>
+                                        <!-- Fix 1: Explicitly invoke the record method () and use Java's .get(0) helper instead of [0] -->
+                                        <th th:each="key : ${query_result.results().get(0).keySet()}" th:text="${key}">
+                                            Column Header
+                                        </th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <!-- Fix 2: Explicitly invoke the record method accessor for the loop iteration -->
+                                    <tr th:each="row : ${query_result.results()}">
+                                        <!-- Loop over the map cell values inside that specific row -->
+                                        <td th:each="value : ${row.values()}" th:text="${value}" th:title="${value}">
+                                            Cell Data
+                                        </td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+
+
+                        <!-- Fallback if query was successful but database returned completely empty -->
+                        <div class="empty-state"
+                            th:if="${query_result.results() == null || #lists.isEmpty(query_result.results())}">
+                            Query returned no results.
+                        </div>
+
+                    </th:block>
+
+                    <!-- Error display if success field is false -->
+                    <th:block th:if="${query_result.success == 'False'}">
+                        <div class="flash error">
+                            Error: <span th:text="${query_result.error}">Error message description</span>
+                        </div>
+                    </th:block>
+
+                </th:block>
+
+                <!-- Global Initial Empty State (rendered only when no action has been performed yet) -->
+                <th:block
+                    th:if="${query_result == null && chunks_result == null && search_result == null && test_results == null}">
+                    <div class="empty-state">
+                        Results will appear here after you perform an action.
+                    </div>
+                </th:block>
+            </section>
+        </div>
+    </main>
+</body>
+
+</html>

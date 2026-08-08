@@ -1,0 +1,9 @@
+spring:
+  application.name: ragwithcosmos
+
+azure:
+  cosmos:
+    endpoint:
+    database: 
+    container: 
+    key: 
