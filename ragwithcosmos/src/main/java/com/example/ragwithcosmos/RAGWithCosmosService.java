@@ -1,5 +1,12 @@
 package com.example.ragwithcosmos;
 
+import java.io.File;
+import java.io.FileInputStream;
+import java.io.IOException;
+import java.io.InputStream;
+import java.time.Instant;
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
@@ -8,13 +15,18 @@ import java.util.Map;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.core.io.ClassPathResource;
+import org.springframework.core.io.Resource;
 import org.springframework.stereotype.Service;
 
 import com.azure.cosmos.CosmosClient;
 import com.azure.cosmos.CosmosClientBuilder;
 import com.azure.cosmos.CosmosContainer;
+import com.azure.cosmos.CosmosException;
+import com.azure.cosmos.models.CosmosItemResponse;
 import com.azure.cosmos.models.CosmosQueryRequestOptions;
 import com.azure.cosmos.models.FeedResponse;
+import com.azure.cosmos.models.PartitionKey;
 import com.azure.cosmos.models.PartitionKeyBuilder;
 import com.azure.cosmos.models.SqlParameter;
 import com.azure.cosmos.models.SqlQuerySpec;
@@ -22,7 +34,10 @@ import com.azure.cosmos.util.CosmosPagedIterable;
 import com.example.ragwithcosmos.pojo.Chunk;
 import com.example.ragwithcosmos.pojo.DocumentId;
 import com.example.ragwithcosmos.pojo.QueryResult;
+import com.example.ragwithcosmos.pojo.Response;
 import com.example.ragwithcosmos.pojo.TestResult;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 
 @Service
 public class RAGWithCosmosService {
@@ -44,6 +59,40 @@ public class RAGWithCosmosService {
                 .buildClient();
 
         return client.getDatabase(databaseName).getContainer(containerName);
+    }
+
+    public List<Chunk> loadJsonFile(String filename) {
+        List<Chunk> chunks = new ArrayList<>();
+
+        try {
+            InputStream inputStream;
+            File file = new File(filename);
+
+            if (file.exists()) {
+                inputStream = new FileInputStream(file);
+            } else {
+                Resource resource = new ClassPathResource(filename);
+                inputStream = resource.getInputStream();
+            }
+
+            try (InputStream stream = inputStream) {
+                ObjectMapper objectMapper = new ObjectMapper();
+                JsonNode rootNode = objectMapper.readTree(stream);
+
+                if (rootNode.has("chunks") && rootNode.get("chunks").isArray()) {
+                    JsonNode chunksNode = rootNode.get("chunks");
+                    for (JsonNode node : chunksNode) {
+                        Chunk chunk = objectMapper.treeToValue(node, Chunk.class);
+                        chunks.add(chunk);
+                    }
+                    logger.info("Loaded JSON file {} with {} chunks", filename, chunks.size());
+                }
+            }
+        } catch (IOException ex) {
+            logger.error("Failed to load JSON file {}", filename, ex);
+        }
+
+        return chunks;
     }
 
     public List<String> getAllDocumentIds() {
@@ -171,41 +220,122 @@ public class RAGWithCosmosService {
         }
         try {
             CosmosContainer container = getContainer();
-            // Execute query (using Map.class to capture generic dynamic JSON fields like Python does)
+            // Execute query (using Map.class to capture generic dynamic JSON fields like
+            // Python does)
             CosmosPagedIterable<Map> items = container.queryItems(sqlQuery, null, Map.class);
 
             // Convert iterable to a concrete List
             List<Map> results = new ArrayList<>();
             items.forEach(results::add);
-    
-             QueryResult queryResult = new QueryResult("True", results, results.size(), null);
-             return queryResult;
+
+            QueryResult queryResult = new QueryResult("True", results, results.size(), null);
+            return queryResult;
         } catch (Exception ex) {
             return new QueryResult("False", new ArrayList<>(), 0, ex.getMessage());
         }
     }
 
-    public Object runTestWorkflow() {
-        List<TestResult>results= new ArrayList<>();
-      // Test 1: Store document chunks
-
-      // Test 2: Get chunks by document
-      try {
-        var chunks = getChunksByDocument("test-doc-001");
-        if(chunks.size()>2){
-            
-            results.add(new TestResult("Get Chunks by Document","passed",
-            String.format("Retrieved %d chunks for test-doc-001",chunks.size())));
+    public Chunk getChunkById(String document_id, String chunk_id) {
+        CosmosContainer container = getContainer();
+        try {
+            return container.readItem(chunk_id, new PartitionKey(document_id), Chunk.class).getItem();
+        } catch (CosmosException ex) {
+            logger.error(ex.getMessage(), ex);
+            return null;
         }
-      } catch (Exception e) {
-        // TODO: handle exception
-      }
+    }
 
+    public Object runTestWorkflow() {
+        List<TestResult> results = new ArrayList<>();
+        int stored_count = 0;
+        float total_ru = 0f;
+        // Test 1: Store document chunks
+        try {
+            var chunks = loadJsonFile("test_chunks.json");
+            for (Chunk chunk : chunks) {
+               var response = storeDocumentChunk(chunk);
+               stored_count += 1;
+               total_ru+=response.ruCharge();
+            }
+            results.add(new TestResult("Store Document Chunks", "passed", 
+            String.format("Stored %d chunks, total RU:%.2f",stored_count,total_ru)));
+            
+        } catch (Exception ex) {
+            logger.error(ex.getMessage(),ex);
+            results.add(new TestResult("Store Document Chunks", "failed",ex.getMessage())); 
+        }
 
+        // Test 2: Get chunks by document
+        try {
+            var chunks = getChunksByDocument("test-doc-001");
+            if (chunks.size() >= 2) {
+                results.add(new TestResult("Get Chunks by Document", "passed",
+                        String.format("Retrieved %d chunks for test-doc-001", chunks.size())));
+            } else {
+                results.add(new TestResult("Get Chunks by Document", "failed",
+                        String.format("Expected at least 2 chunks, got %d", chunks.size())));
+            }
+        } catch (Exception ex) {
+            results.add(new TestResult("Get Chunks by Document", "failed", ex.getMessage()));
+        }
 
+        // Test 3: Search by metadata (category)
+        try {
+            var chunks = searchChunksByMetadata(Map.of("category", "databases"));
+            if (chunks.size() > 2) {
+                results.add(new TestResult("Search by Category", "passed",
+                        String.format("Found %d chunks with category 'databases'", chunks.size())));
+            } else {
+                results.add(new TestResult("Search by Category", "failed",
+                        String.format("Expected at least 2 chunks, got %d", chunks.size())));
+            }
+        } catch (Exception ex) {
+            results.add(new TestResult("Search by Category", "failed", ex.getMessage()));
+        }
 
-      return null;
+        // Test 4: Search by metadata (tags)
+        try {
+            var chunks = searchChunksByMetadata(Map.of("tag", "serverless"));
+            if (chunks.size() >= 2) {
+                results.add(new TestResult("Search by Tag", "passed",
+                        String.format("Found %d chunks with tag 'serverless'", chunks.size())));
+            } else {
+                results.add(new TestResult("Search by Tag", "failed",
+                        String.format("Expected at least 1 chunk, got %d", chunks.size())));
+            }
+        } catch (Exception ex) {
+            results.add(new TestResult("Search by Tag", "failed", ex.getMessage()));
+        }
+
+        // Test 5: Point read
+        try {
+            var chunk = getChunkById("test-doc-001", "test-doc-001-chunk-0");
+
+            if (chunk != null && chunk.content() != null) {
+                results.add(new TestResult("Point Read (Get Chunk by ID)", "passed",
+                        String.format("Retrieved chunk with %d characters", chunk.content().length())));
+            } else {
+                results.add(new TestResult("Point Read (Get Chunk by ID)", "failed", "Chunk not found or empty"));
+            }
+        } catch (Exception ex) {
+            results.add(new TestResult("Point Read (Get Chunk by ID)", "failed", ex.getMessage()));
+        }
+
+        return results;
 
     }
 
+    private Response storeDocumentChunk(Chunk chunk) {
+        CosmosContainer container = getContainer(); 
+        DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ss.SSSSSS");
+
+        Chunk chnk = new Chunk(chunk.id(), chunk.documentId(), chunk.content(), chunk.metadata(),
+                               chunk.embedding() !=null ? chunk.embedding():new ArrayList<>(),
+                               chunk.metadata().chunkIndex(),LocalDateTime.now().format(formatter));
+
+        CosmosItemResponse<Chunk> response = container.upsertItem(chnk,new PartitionKey(chnk.documentId()),null);        
+        var ru_charge = Float.valueOf(response.getResponseHeaders().get("x-ms-request-charge"));
+
+        return new Response(chnk.id(),chnk.documentId(),ru_charge);
+    }
 }
