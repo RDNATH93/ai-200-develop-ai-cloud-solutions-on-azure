@@ -1,0 +1,46 @@
+{
+    "chunks": [
+        {
+            "document_id": "test-doc-003",
+            "chunk_id": "test-doc-003-chunk-0",
+            "content": "Azure Cosmos DB is a fully managed NoSQL database service.",
+            "metadata": {
+                "source": "azure-docs",
+                "category": "databases",
+                "tags": [
+                    "nosql",
+                    "cosmosdb"
+                ],
+                "chunkIndex": 0
+            }
+        },
+        {
+            "document_id": "test-doc-003",
+            "chunk_id": "test-doc-003-chunk-1",
+            "content": "Cosmos DB offers multiple APIs including NoSQL, MongoDB, and Cassandra.",
+            "metadata": {
+                "source": "azure-docs",
+                "category": "databases",
+                "tags": [
+                    "nosql",
+                    "api"
+                ],
+                "chunkIndex": 1
+            }
+        },
+        {
+            "document_id": "test-doc-004",
+            "chunk_id": "test-doc-004-chunk-0",
+            "content": "Azure Functions is a serverless compute service.",
+            "metadata": {
+                "source": "azure-docs",
+                "category": "compute",
+                "tags": [
+                    "serverless",
+                    "functions"
+                ],
+                "chunkIndex": 0
+            }
+        }
+    ]
+}
