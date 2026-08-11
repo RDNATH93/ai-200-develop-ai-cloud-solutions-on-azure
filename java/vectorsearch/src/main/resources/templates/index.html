@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="en" xmlns:th="http://www.thymeleaf.org">
+
+<head>
+    <title>Vector Search - Cosmos DB</title>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" th:href="@{/css/style.css}">
+</head>
+
+<body>
+    <a href="#main-content" class="skip-link">Skip to main content</a>
+
+    <main id="main-content" class="container">
+        <h1>Vector Search - Cosmos DB for NoSQL</h1>
+        <div class="left-panel">
+            <section class="section section-load">
+                <h2>Load Sample Data</h2>
+                <p>Upload sample support tickets with pre-computed 256-dimensional embeddings to the Cosmos DB
+                    container.</p>
+                <form th:action="@{/load-data}" method="post">
+                    <button type="submit" class="btn-success">Load Vector Data</button>
+                </form>
+            </section>
+
+            <section class="section section-search">
+                <h2>Vector Similarity Search</h2>
+                <p>Find tickets most similar to a query using VectorDistance.</p>
+                <form th:action="@{/vector-search}" method="post">
+                    <label for="query_id">Select Query</label>
+                    <select id="query_id" name="query_id" required>
+                        <option value="">-- Select a query --</option>
+                        <option th:each="query : ${queries}" th:value="${query.id}" th:text="${query.description}"
+                            th:selected="${query.id == selectedQueryId}"></option>
+                    </select>
+                    <label for="top_n">Number of Results</label>
+                    <select id="top_n" name="top_n">
+                        <option value="3">Top 3</option>
+                        <option value="5" selected>Top 5</option>
+                        <option value="10">Top 10</option>
+                    </select>
+                    <button type="submit" class="btn-primary">Search</button>
+                </form>
+            </section>
+
+            <section class="section section-get">
+                <h2>Filtered Vector Search</h2>
+                <p>Combine metadata filtering with vector similarity ranking.</p>
+                <form th:action="@{/filtered-vector-search}" method="post">
+                    <label for="filtered_query_id">Select Query</label>
+                    <select id="filtered_query_id" name="filtered_query_id" required>
+                        <option value="">-- Select a query --</option>
+                        <option th:each="query : ${queries}" th:value="${query.id}" th:text="${query.description}"
+                            th:selected="${query.id == selectedFilteredQueryId}"></option>
+                    </select>
+                    <label for="filter_category">Filter by Category</label>
+                    <select id="filter_category" name="filter_category">
+                        <option value="">-- Any category --</option>
+                        <option th:each="cat : ${categories}" th:value="${cat}" th:text="${cat}"
+                            th:selected="${cat == selectedCategory}"></option>
+                    </select>
+                    <label for="filtered_top_n">Number of Results</label>
+                    <select id="filtered_top_n" name="filtered_top_n">
+                        <option value="3">Top 3</option>
+                        <option value="5" selected>Top 5</option>
+                        <option value="10">Top 10</option>
+                    </select>
+                    <button type="submit" class="btn-primary">Search with Filter</button>
+                </form>
+            </section>
+        </div>
+
+        <div class="right-panel">
+            <section class="section section-results" aria-live="polite" aria-atomic="true">
+                <h2>Results</h2>
+
+                <div th:if="${messages != null and !#maps.isEmpty(messages)}">
+                    <div th:each="entry : ${messages}"
+                        th:classappend="${entry.value == 'success'} ? 'success' : 'error'"
+                        class="flash" role="alert" th:text="${entry.key}">
+                    </div>
+                </div>
+
+
+                <div th:if="${vectorResult != null}">
+                    <h3>Vector Search Results</h3>
+                    <div class="query-info">Query: [[${vectorQuery}]] | Top [[${vectorTopN}]] results</div>
+                    <div th:if="${!#lists.isEmpty(vectorResult)}" class="results-container">
+                        <div th:each="item : ${vectorResult}" class="chunk-card">
+                            <div class="chunk-id">
+                                <span th:text="|${item.documentId} / ${item.id}|"></span>
+                                <span class="similarity-score"
+                                    th:text="|Score: ${#numbers.formatDecimal(item.similarityScore, 1, 4)}|"></span>
+                            </div>
+                            <div class="chunk-content" th:text="${item.content}"></div>
+                            <div class="chunk-meta">
+                                <span
+                                    th:if="${item.metadata != null and item.metadata.category != null and !#strings.isEmpty(item.metadata.category)}"
+                                    class="tag tag-category" th:text="${item.metadata.category}"></span>
+                                <span th:each="tag : ${item.metadata.tags}" class="tag" th:text="${tag}"></span>
+                            </div>
+                        </div>
+                    </div>
+                    <div th:unless="${!#lists.isEmpty(vectorResult)}" class="empty-state">No similar tickets found.
+                    </div>
+                </div>
+
+                <div th:if="${filteredResult != null and vectorResult == null}">
+                    <h3>Filtered Vector Search Results</h3>
+                    <div class="query-info">
+                        <span>Query: [[${filteredQuery}]] | </span>
+                        <span th:if="${filteredCategory != null and !#strings.isEmpty(filteredCategory)}">Category:
+                            [[${filteredCategory}]] | </span>
+                        <span>Top [[${filteredTopN}]] results</span>
+                    </div>
+                    <div th:if="${!#lists.isEmpty(filteredResult)}" class="results-container">
+                        <div th:each="item : ${filteredResult}" class="chunk-card">
+                            <div class="chunk-id">
+                                <span th:text="|${item.documentId} / ${item.id}|"></span>
+                                <span class="similarity-score"
+                                    th:text="|Score: ${#numbers.formatDecimal(item.similarityScore, 1, 4)}|"></span>
+                            </div>
+                            <div class="chunk-content" th:text="${item.content}"></div>
+                            <div class="chunk-meta">
+                                <span
+                                    th:if="${item.metadata != null and item.metadata.category != null and !#strings.isEmpty(item.metadata.category)}"
+                                    class="tag tag-category" th:text="${item.metadata.category}"></span>
+                                <span th:each="tag : ${item.metadata.tags}" class="tag" th:text="${tag}"></span>
+                            </div>
+                        </div>
+                    </div>
+                    <div th:unless="${!#lists.isEmpty(filteredResult)}" class="empty-state">No tickets found matching
+                        the filter.</div>
+                </div>
+
+                <div th:if="${vectorResult == null and filteredResult == null}" class="empty-state">
+                    Results will appear here after you perform an action.
+                </div>
+            </section>
+        </div>
+    </main>
+</body>
+
+</html>

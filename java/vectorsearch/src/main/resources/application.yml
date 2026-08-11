@@ -1,0 +1,14 @@
+spring:
+  application:
+    name: vectorsearch
+
+  cloud:
+    azure:
+      cosmos:
+        endpoint: ${COSMOS_ENDPOINT}
+        database: ${COSMOS_DATABASE}
+        key: ${COSMOS_KEY}
+
+azure:
+  cosmos:
+    container: ${COSMOS_CONTAINER}        
